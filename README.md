@@ -33,10 +33,14 @@ It also auto-switches to vertical output (`\G`) when a table is “wide” (many
 
 > Tip: your MySQL credentials can come from `~/.my.cnf`, env vars, or whatever you already use with `mysql`.
 
-- Exemple of my.cnf
-> [client]
-> user=root
-> password=mypassword
+
+## Exemple of my.cnf
+
+```bash
+[client]
+user=root
+password=mypassword
+```
 
 ---
 
