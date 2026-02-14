@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-DB="nrgestorbackend"
+DB="mydatabase"
 DEFAULT_LIMIT=20
 WIDE_COL_THRESHOLD=8
 CACHE_DIR="${HOME:-/tmp}"
