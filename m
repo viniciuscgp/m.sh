@@ -1,15 +1,25 @@
 #!/bin/bash
 set -euo pipefail
 
-DB="mydatabase"
 DEFAULT_LIMIT=20
 WIDE_COL_THRESHOLD=8
 CACHE_DIR="${HOME:-/tmp}"
+CONFIG_FILE="${CACHE_DIR}/.m_db"
+FIXED_DB="$(cat "$CONFIG_FILE" 2>/dev/null || true)"
+FIXED_DB="${FIXED_DB//[$'\r\n']/}"
+DB="${M_DB:-${FIXED_DB:-nrgestorbackend}}"
 CACHE_FILE="${CACHE_DIR}/.m_tables_cache_${DB}"
 
 usage() {
   cat <<'EOF'
 Uso:
+  -d <banco> | --db <banco> -> usa o banco <banco> só neste comando
+                              (padrão: banco fixado, $M_DB ou nrgestorbackend)
+                              vale no início de qualquer comando abaixo
+  -D | --databases          -> lista os bancos disponíveis (SHOW DATABASES)
+  -D <banco>                -> igual a -d <banco>
+  -D <banco> fix            -> fixa <banco> como padrão para os próximos comandos
+
   m                      -> SHOW TABLES numerado (use o numero como tabela)
   m <tabela|n>            -> SELECT * FROM <tabela> LIMIT 20 (auto \G se larga)
   m <tabela|n> <n>        -> SELECT * FROM <tabela> LIMIT <n> (auto \G se larga)
@@ -17,6 +27,9 @@ Uso:
   m <tabela|n> <n> v      -> SELECT * FROM <tabela> LIMIT <n> (força \G)
   m t <tabela|n> [n] [v]  -> últimos registros (ORDER BY id/created_at/updated_at DESC)
   m t <tabela|n> auto [n] [v] -> monitora últimos registros (CTRL+C para sair)
+
+  m fix                    -> fixa o banco atual como padrão
+  m fix clear              -> remove o banco fixado
 
   m desc|d <tabela|n>     -> DESCRIBE <tabela>
   m count|c <tabela|n>    -> SELECT COUNT(*) FROM <tabela>
@@ -114,6 +127,28 @@ confirm() {
 }
 
 # --- main ---
+while [ "${1:-}" = "-d" ] || [ "${1:-}" = "--db" ] || [ "${1:-}" = "-D" ] || [ "${1:-}" = "--databases" ]; do
+  if [ "$1" = "-D" ] || [ "$1" = "--databases" ]; then
+    if [ "${2:-}" = "" ]; then
+      mysql -N -B -e "SHOW DATABASES;" | while IFS= read -r name; do
+        if [ -n "$FIXED_DB" ] && [ "$name" = "$FIXED_DB" ]; then
+          printf '%s (fixado)\n' "$name"
+        elif [ "$name" = "$DB" ]; then
+          printf '%s (padrão)\n' "$name"
+        else
+          printf '%s\n' "$name"
+        fi
+      done
+      exit 0
+    fi
+    [ "$2" = "fix" ] && { shift 1; continue; }
+  fi
+  [ "${2:-}" = "" ] && { echo "Informe o banco após $1."; exit 1; }
+  DB="$2"
+  shift 2
+done
+CACHE_FILE="${CACHE_DIR}/.m_tables_cache_${DB}"
+
 if [ "${1:-}" = "" ]; then
   save_table_cache
   nl -w2 -s'. ' "$CACHE_FILE"
@@ -124,6 +159,21 @@ case "$1" in
   -h|--help|help)
     usage
     exit 0
+    ;;
+  fix)
+    if [ "${2:-}" = "clear" ]; then
+      rm -f "$CONFIG_FILE"
+      echo "Banco fixado removido. O padrão volta a ser nrgestorbackend (ou \$M_DB)."
+    elif [ "${2:-}" != "" ]; then
+      echo "Uso: m fix | m -d <banco> fix | m -D <banco> fix | m fix clear"
+      exit 1
+    elif mysql -N -B -e "SHOW DATABASES;" | grep -Fqx "$DB"; then
+      printf '%s\n' "$DB" > "$CONFIG_FILE"
+      echo "Banco '$DB' fixado como padrão (salvo em $CONFIG_FILE)."
+    else
+      echo "Erro: banco '$DB' não existe." >&2
+      exit 1
+    fi
     ;;
   d|desc)
     [ "${2:-}" = "" ] && { echo "Informe a tabela."; exit 1; }
